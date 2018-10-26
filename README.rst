@@ -21,4 +21,4 @@ This package was created with Cookiecutter_ and the `audreyr/cookiecutter-pypack
 Screenshot
 ----------
 
-.. image:: docs/screens/main_window.PNG
+.. image:: foct_viewer/docs/screens/main_window.PNG
