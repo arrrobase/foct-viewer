@@ -115,7 +115,6 @@ class FoctViewer(QMainWindow):
 
         self.load_bar.hide()
 
-
     def file_menu(self):
         """Create a file submenu with an Open File item that opens a file dialog."""
 
@@ -170,7 +169,7 @@ class FoctViewer(QMainWindow):
         self.menu_options.addAction(self.options_seg)
 
     def help_menu(self):
-        """Create a help submenu with an About item tha opens an about dialog."""
+        """Create a help submenu with an About item that opens an about dialog."""
         self.help_sub_menu = self.menu_bar.addMenu('Help')
 
         self.about_action = QAction('About', self)
