@@ -7,7 +7,7 @@ foct_viewer
         :target: https://travis-ci.org/awctomlinson/foct-viewer
 
 
-a simple viewer for Optovue foct files.
+A simple viewer for Optovue foct files.
 
 Credits
 ---------
