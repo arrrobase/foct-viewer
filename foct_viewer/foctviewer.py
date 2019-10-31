@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 import pkg_resources
 import pyqtgraph as pg
+from PIL import Image
 
 from PyQt5.QtCore import (Qt, pyqtSignal, QThread)
 from PyQt5.QtGui import QIcon, QCursor
@@ -131,6 +132,10 @@ class FoctViewer(QMainWindow):
         menu_open_seg.setStatusTip('Open a segment file.')
         menu_open_seg.triggered.connect(self.on_file_open_seg)
 
+        menu_open_second_seg = QAction('Open comparison seg', self)
+        menu_open_second_seg.setStatusTip('Open a segment file to compare.')
+        menu_open_second_seg.triggered.connect(self.on_file_open_second_seg)
+
         menu_exit = QAction('Exit Application', self)
         menu_exit.setStatusTip('Exit the application.')
         menu_exit.setShortcut('CTRL+Q')
@@ -138,6 +143,7 @@ class FoctViewer(QMainWindow):
 
         self.menu_file.addAction(menu_open)
         self.menu_file.addAction(menu_open_seg)
+        self.menu_file.addAction(menu_open_second_seg)
         self.menu_file.addAction(menu_exit)
 
         ### VIEW ###
@@ -165,8 +171,14 @@ class FoctViewer(QMainWindow):
         self.options_seg.setCheckable(True)
         self.options_seg.setChecked(True)
 
+        options_save_gif = QAction('Save gif', self)
+        options_save_gif.setStatusTip('Save a gif of the OCTA optionally with segment data.')
+        options_save_gif.triggered.connect(self.central_widget.save_gif)
+        options_save_gif.setShortcut('CTRL+S')
+
         self.menu_options.addAction(self.options_ssada)
         self.menu_options.addAction(self.options_seg)
+        self.menu_options.addAction(options_save_gif)
 
     def help_menu(self):
         """Create a help submenu with an About item that opens an about dialog."""
@@ -212,6 +224,16 @@ class FoctViewer(QMainWindow):
             filename = Path(filename)
             self.central_widget.open_seg(filename)
 
+    def on_file_open_second_seg(self):
+        """Open a QFileDialog to allow the user to open a file into the application."""
+        filename, accepted = QFileDialog.getOpenFileName(self, 'Open File',
+                                                         filter='Segment (*.mat);;'\
+                                                                'All files (*)')
+
+        if accepted:
+            filename = Path(filename)
+            self.central_widget.open_second_seg(filename)
+
     def show_traceback(self, type, value, traceback):
         """
         Formatting error dialog
@@ -250,8 +272,12 @@ class MainWidget(pg.ImageView):
         # plot items for seg data
         num_lines = 8
         self.line_plots = [pg.PlotCurveItem() for i in range(num_lines)]
+        self.line2_plots = [pg.PlotCurveItem() for i in range(num_lines)]
 
         for line in self.line_plots:
+            self.view.addItem(line)
+
+        for line in self.line2_plots:
             self.view.addItem(line)
 
         # attributes
@@ -259,6 +285,7 @@ class MainWidget(pg.ImageView):
         self.foct_data = None
         self.ssada_data = None
         self.seg_data = None
+        self.seg2_data = None
         self.play_stop = None
         self.lims = None
         self.path_label = None
@@ -349,6 +376,35 @@ class MainWidget(pg.ImageView):
 
         self.load_seg(seg_lines)
 
+    def open_second_seg(self, filename=None, force=False):
+        """
+        Opens a segment file to compare
+
+        :param filename:
+        :param force: if True, ignore the check for FOCT data
+        :return:
+        """
+        seg_path = filename
+        if seg_path is None:
+            return
+
+        seg_data = loadmat(str(seg_path), appendmat=False)
+
+        try:
+            seg_lines = seg_data['ManualCurveData']
+            seg_lines = 640 - seg_lines
+
+            if not force:
+                if self.foct_data is not None:
+                    assert seg_lines.shape[::2] == self.foct_data.shape[:2]
+                else:
+                    raise AttributeError('Cannot load segment file without FOCT data loaded.')
+
+        except (KeyError, AssertionError):
+            raise FileNotFoundError('Cannot load segment file; not expected format.')
+
+        self.load_second_seg(seg_lines)
+
     def load_foct(self, foct_path, ssada_path=None):
         """Loads foct and ssada and reshapes, in seperate thread"""
 
@@ -384,6 +440,11 @@ class MainWidget(pg.ImageView):
     def load_seg(self, seg_lines):
         """Loads seg lines"""
         self.seg_data = seg_lines
+        self.sig_lines_changed.emit()
+
+    def load_second_seg(self, seg_lines):
+        """Loads seg lines"""
+        self.seg2_data = seg_lines
         self.sig_lines_changed.emit()
 
     def update_bar(self, pct):
@@ -465,7 +526,7 @@ class MainWidget(pg.ImageView):
         self.setLevels(up_thresh, low_thresh)
 
         self.status_bar.clearMessage()
-        self.status_bar.showMessage('done!', 3000)
+        self.status_bar.showMessage('Done!', 3000)
 
     def draw_lines(self, ind=None):
 
@@ -478,11 +539,23 @@ class MainWidget(pg.ImageView):
                 line.setData(None)
             return
 
+        if self.seg2_data is None:
+            for idx, line in enumerate(self.line2_plots):
+                line.setData(None)
+            # return
+
         for to_draw, (idx, line) in zip(self.show_lines, enumerate(self.line_plots)):
             if to_draw:
                 line.setData(self.seg_data[:, idx, ind])
             else:
                 line.setData(None)
+
+        if self.seg2_data is not None:
+            for to_draw, (idx, line) in zip(self.show_lines, enumerate(self.line2_plots)):
+                if to_draw:
+                    line.setData(self.seg2_data[:, idx, ind], pen=pg.mkPen(color='r'))
+                else:
+                    line.setData(None)
 
     def wheelEvent(self, ev, axis=None):
         """Overrides wheel event"""
@@ -612,6 +685,56 @@ class MainWidget(pg.ImageView):
         """Update the step"""
         self.step = int(val)
 
+    def save_gif(self):
+        """Save a gif of the OCT data"""
+        if self.foct_data is None:
+            raise AttributeError('Cannot save OCT if no OCT is loaded.')
+
+        save_name = QFileDialog.getSaveFileName(self, 'Save GIF',
+                                                         filter='GIF (*.gif);;'\
+                                                                'All files (*)')
+
+        if not save_name[0]:
+            return
+
+        save_name = Path(save_name[0])
+
+        # make RGB, stack last dimension
+        data_ars = self.foct_data.copy()
+        # data_ars = np.stack([data_ars] * 3, axis=-1)
+
+        # add in segments
+        if self.seg_data is not None and any(self.show_lines):
+
+            for line_idx, to_draw in enumerate(self.show_lines):
+                if not to_draw:
+                    continue
+
+                for frame in range(len(data_ars)):
+                    seg_line = self.seg_data[:, line_idx, frame]
+
+                    for col, row in enumerate(seg_line):
+                        data_ars[frame, col, row-1] = 255
+                        # data_ars[frame, col, row-1] = [255, 255, 255]
+
+                    # if self.seg2_data is not None:
+                    #     for col, row in enumerate(self.seg2_data[:, line_idx, frame]):
+                    #         data_ars[]
+
+        images = [Image.fromarray(im) for im in data_ars]
+        # add some white flash to signal end of gif
+        images.extend([Image.fromarray(np.full_like(self.foct_data[0], 128))]*3)
+
+        # get the lut table from the hist
+        lut = self.getImageItem()._effectiveLut[:, 0]
+        images = [im.rotate(90, expand=True).point(lut) for im in images]
+
+        frame_duration = 30  # ms
+        images[0].save(str(save_name), format='GIF', append_images=images[1::2],
+                       save_all=True, duration=int(frame_duration), loop=0)
+
+        print('saved')
+
 
 class LinesDock(QDockWidget):
     """test of dock"""
@@ -662,7 +785,7 @@ class LinesDock(QDockWidget):
             'RPE/BM'
         ]
 
-        self.line_checkboxes = {line:ClickCheckBox(line) for line in self.lines}
+        self.line_checkboxes = {line: ClickCheckBox(line) for line in self.lines}
 
         for linename in self.lines:
             linebox = self.line_checkboxes[linename]
@@ -779,7 +902,7 @@ def main():
     window = FoctViewer()
 
     # catch errors into error dialog
-    sys.excepthook = lambda x, y, z: except_hook(x, y, z, window)
+    # sys.excepthook = lambda x, y, z: except_hook(x, y, z, window)
 
     desktop = QDesktopWidget().availableGeometry()
     width = (desktop.width() - window.width()) / 2
