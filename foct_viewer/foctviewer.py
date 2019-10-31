@@ -701,7 +701,7 @@ class MainWidget(pg.ImageView):
 
         # make RGB, stack last dimension
         data_ars = self.foct_data.copy()
-        # data_ars = np.stack([data_ars] * 3, axis=-1)
+        data_ars = np.stack([data_ars] * 3, axis=-1)
 
         # add in segments
         if self.seg_data is not None and any(self.show_lines):
@@ -714,26 +714,27 @@ class MainWidget(pg.ImageView):
                     seg_line = self.seg_data[:, line_idx, frame]
 
                     for col, row in enumerate(seg_line):
-                        data_ars[frame, col, row-1] = 255
-                        # data_ars[frame, col, row-1] = [255, 255, 255]
+                        data_ars[frame, col, row-1] = [255, 255, 255]
 
-                    # if self.seg2_data is not None:
-                    #     for col, row in enumerate(self.seg2_data[:, line_idx, frame]):
-                    #         data_ars[]
+                    if self.seg2_data is not None:
+                        for col, row in enumerate(self.seg2_data[:, line_idx, frame]):
+                            data_ars[frame, col, row-1] = [255, 0, 0]
 
         images = [Image.fromarray(im) for im in data_ars]
         # add some white flash to signal end of gif
-        images.extend([Image.fromarray(np.full_like(self.foct_data[0], 128))]*3)
+        images.extend([Image.fromarray(np.full_like(data_ars[0], 128))]*3)
 
         # get the lut table from the hist
-        lut = self.getImageItem()._effectiveLut[:, 0]
+        lut = self.getImageItem()._effectiveLut.flatten(order='F')
+        assert len(lut) == images[0].im.bands * 256
         images = [im.rotate(90, expand=True).point(lut) for im in images]
 
         frame_duration = 30  # ms
         images[0].save(str(save_name), format='GIF', append_images=images[1::2],
                        save_all=True, duration=int(frame_duration), loop=0)
 
-        print('saved')
+        self.status_bar.clearMessage()
+        self.status_bar.showMessage('Saved!', 5000)
 
 
 class LinesDock(QDockWidget):
