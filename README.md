@@ -1,15 +1,9 @@
-===============================
-foct_viewer
-===============================
+# FOCT Viewer
 
+A simple viewer for Optovue FOCT files and COOL segment files. Can also load in comparison segments for viewing,
+as well as save GIF flythroughs. 
 
-.. image:: https://img.shields.io/travis/awctomlinson/foct-viewer.svg
-        :target: https://travis-ci.org/awctomlinson/foct-viewer
-
-
-A simple viewer for Optovue foct files.
-
-Credits
+## Credits
 ---------
 
 This package was created with Cookiecutter_ and the `audreyr/cookiecutter-pypackage`_ project template.
@@ -18,8 +12,7 @@ This package was created with Cookiecutter_ and the `audreyr/cookiecutter-pypack
 .. _`audreyr/cookiecutter-pypackage`: https://github.com/audreyr/cookiecutter-pypackage
 
 
-Screenshot
-----------
+## Screenshot
 
 .. image:: foct_viewer/docs/screens/main_window.PNG
 
